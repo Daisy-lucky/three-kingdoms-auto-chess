@@ -456,11 +456,11 @@ class Game {
         const gs = this.gridSize;
         
         // 清空画布
-        ctx.fillStyle = '#1a1a2e';
+        ctx.fillStyle = '#ffffff';
         ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
         
         // 绘制网格
-        ctx.strokeStyle = '#333';
+        ctx.strokeStyle = '#ddd';
         ctx.lineWidth = 1;
         for (let x = 0; x <= this.cols; x++) {
             ctx.beginPath();
@@ -476,11 +476,11 @@ class Game {
         }
         
         // 绘制我方区域
-        ctx.fillStyle = 'rgba(0, 100, 0, 0.2)';
+        ctx.fillStyle = 'rgba(76, 175, 80, 0.15)';
         ctx.fillRect(0, 4 * gs, this.cols * gs, 4 * gs);
         
         // 绘制敌方区域
-        ctx.fillStyle = 'rgba(100, 0, 0, 0.2)';
+        ctx.fillStyle = 'rgba(244, 67, 54, 0.15)';
         ctx.fillRect(0, 0, this.cols * gs, 4 * gs);
         
         // 绘制棋盘上的单位
@@ -503,7 +503,7 @@ class Game {
         const cy = y * gs + gs / 2;
         
         // 绘制单位背景
-        ctx.fillStyle = '#2d2d44';
+        ctx.fillStyle = '#f0f0f0';
         ctx.beginPath();
         ctx.arc(cx, cy, gs / 2 - 5, 0, Math.PI * 2);
         ctx.fill();

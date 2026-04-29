@@ -45,7 +45,7 @@
         }
         
         /* 游戏主区域 */
-        #game-area { display: flex; flex: 1; overflow: hidden; }
+        #game-area { display: flex; flex: 1; overflow: hidden; background: #ffffff; }
         
         /* 棋盘区域 */
         #board-area {
@@ -55,17 +55,19 @@
             align-items: center;
             justify-content: center;
             position: relative;
+            background: #ffffff;
         }
         #chess-board {
-            background: rgba(0,0,0,0.5);
+            background: #ffffff;
             border: 3px solid #8b4513;
             border-radius: 5px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
         }
         
         /* 右侧面板 */
         #side-panel {
             width: 320px;
-            background: linear-gradient(90deg, #1a1a2e 0%, #2d2d44 100%);
+            background: #f8f8f8;
             border-left: 2px solid #8b4513;
             display: flex;
             flex-direction: column;
