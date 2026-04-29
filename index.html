@@ -383,8 +383,14 @@
                 
                 <!-- 场上武将 -->
                 <div class="panel-section">
-                    <div class="panel-title">⚔️ 场上武将 (<span id="unit-count">0</span>/4)</div>
+                    <div class="panel-title">⚔️ 场上武将 (<span id="unit-count">0</span>/<span id="max-units">4</span>)</div>
                     <div id="board-units" style="display:flex;flex-wrap:wrap;gap:5px;"></div>
+                </div>
+                
+                <!-- 候补区 -->
+                <div class="panel-section">
+                    <div class="panel-title">🔄 候补区 <span style="font-size:12px;color:#888;">(点击拖拽到棋盘)</span></div>
+                    <div id="bench-units" style="display:flex;flex-wrap:wrap;gap:5px;"></div>
                 </div>
             </div>
         </div>

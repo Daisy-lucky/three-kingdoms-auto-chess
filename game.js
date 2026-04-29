@@ -106,16 +106,18 @@ class Game {
         this.canvas = document.getElementById('chess-board');
         this.ctx = this.canvas.getContext('2d');
         
-        this.gridSize = 60;
+        this.gridSize = 70;
         this.cols = 8;
         this.rows = 8;
+        this.hexSize = 35; // 八边形半径
         
-        this.canvas.width = this.cols * this.gridSize;
-        this.canvas.height = this.rows * this.gridSize;
+        this.canvas.width = this.cols * this.gridSize + this.gridSize;
+        this.canvas.height = this.rows * this.gridSize + this.gridSize;
         
         this.resetGame();
         this.setupEventListeners();
         this.render();
+        this.dragUnit = null;
     }
     
     resetGame() {
@@ -165,28 +167,89 @@ class Game {
     }
     
     setupEventListeners() {
-        this.canvas.addEventListener('click', (e) => this.handleBoardClick(e));
+        this.canvas.addEventListener('mousedown', (e) => this.handleBoardDown(e));
         this.canvas.addEventListener('mousemove', (e) => this.handleBoardMove(e));
+        this.canvas.addEventListener('mouseup', (e) => this.handleBoardUp(e));
+        this.canvas.addEventListener('mouseleave', () => this.handleBoardUp());
     }
     
     getMousePos(e) {
         const rect = this.canvas.getBoundingClientRect();
-        return {
-            x: Math.floor((e.clientX - rect.left) / this.gridSize),
-            y: Math.floor((e.clientY - rect.top) / this.gridSize)
-        };
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+        
+        // 八边形网格坐标计算
+        const col = Math.floor(mx / this.gridSize);
+        const row = Math.floor(my / this.gridSize);
+        
+        return { x: Math.max(0, Math.min(this.cols - 1, col)), y: Math.max(0, Math.min(this.rows - 1, row)) };
     }
     
-    handleBoardClick(e) {
+    handleBoardDown(e) {
         const pos = this.getMousePos(e);
         
-        if (this.selectedUnit) {
-            this.placeUnit(pos.x, pos.y);
+        // 检查是否点击了已有单位
+        const clickedUnit = this.boardUnits.find(u => u.gridX === pos.x && u.gridY === pos.y);
+        if (clickedUnit) {
+            this.dragUnit = clickedUnit;
+            this.dragOffset = { x: pos.x - clickedUnit.gridX, y: pos.y - clickedUnit.gridY };
+            this.isDragging = true;
+        } else if (this.selectedBenchUnit) {
+            // 从候补区选择拖拽
+            this.dragUnit = this.selectedBenchUnit;
+            this.isDragging = true;
         }
+        
+        this.mousePos = pos;
+        this.render();
     }
     
     handleBoardMove(e) {
-        this.mousePos = this.getMousePos(e);
+        if (this.isDragging) {
+            this.mousePos = this.getMousePos(e);
+            this.render();
+        }
+    }
+    
+    handleBoardUp(e) {
+        if (this.isDragging && this.dragUnit && this.mousePos) {
+            const pos = this.mousePos;
+            
+            // 检查是否在我方区域（下方 4 行）
+            if (pos.y >= 4) {
+                // 检查位置是否已有单位
+                const occupied = this.boardUnits.find(u => u.gridX === pos.x && u.gridY === pos.y && u.uid !== this.dragUnit.uid);
+                if (!occupied) {
+                    // 检查人口限制
+                    if (this.boardUnits.length >= this.playerLevel && !this.dragUnit.gridXInit) {
+                        this.showMessage('人口已达上限！', 'error');
+                    } else {
+                        this.dragUnit.gridX = pos.x;
+                        this.dragUnit.gridY = pos.y;
+                        
+                        // 如果是从候补区拖拽的（还未上阵）
+                        if (!this.dragUnit.gridXInit) {
+                            this.dragUnit.gridXInit = true;
+                            this.boardUnits.push(this.dragUnit);
+                            this.benchUnits = this.benchUnits.filter(u => u.uid !== this.dragUnit.uid);
+                            this.showMessage(`${this.dragUnit.name} 上阵！`, 'info');
+                        }
+                        
+                        this.calcBonds();
+                        this.updateUI();
+                        this.render();
+                    }
+                } else {
+                    this.showMessage('该位置已有单位！', 'error');
+                }
+            } else {
+                this.showMessage('只能放置在我方区域（绿色）！', 'error');
+            }
+        }
+        
+        this.isDragging = false;
+        this.dragUnit = null;
+        this.selectedBenchUnit = null;
         this.render();
     }
     
@@ -198,15 +261,15 @@ class Game {
         
         // 检查是否有相同武将
         const existing = this.benchUnits.find(u => u.id === unit.id && u.star === unit.star);
-        if (existing) {
+        if (existing && existing.star < 3) {
             // 升星
             existing.star++;
-            this.benchUnits = this.benchUnits.filter(u => u.uid !== unit.uid);
             if (existing.star >= 3) {
                 this.showMessage(`${existing.name} 三星了！`, 'gold');
             }
         } else {
-            this.benchUnits.push(unit);
+            const newUnit = { ...unit, uid: Date.now() + Math.random(), gridX: -1, gridY: -1 };
+            this.benchUnits.push(newUnit);
         }
         
         this.shop[index] = this.randomUnit();
@@ -277,11 +340,20 @@ class Game {
         if (!unit) return;
         
         this.boardUnits = this.boardUnits.filter(u => u.uid !== uid);
+        delete unit.gridXInit;
         this.benchUnits.push(unit);
         
         this.calcBonds();
         this.render();
         this.updateUI();
+    }
+    
+    selectBenchUnit(uid) {
+        const unit = this.benchUnits.find(u => u.uid === uid);
+        if (!unit) return;
+        
+        this.selectedBenchUnit = unit;
+        this.showMessage(`点击棋盘放置 ${unit.name}`, 'info');
     }
     
     calcBonds() {
@@ -421,7 +493,8 @@ class Game {
         document.getElementById('player-hp').textContent = this.playerHp;
         document.getElementById('round-num').textContent = this.round;
         document.getElementById('gold-count').textContent = this.gold;
-        document.getElementById('unit-count').textContent = `${this.boardUnits.length}/${this.playerLevel}`;
+        document.getElementById('unit-count').textContent = this.boardUnits.length;
+        document.getElementById('max-units').textContent = this.playerLevel;
         
         this.renderBench();
     }
@@ -441,59 +514,101 @@ class Game {
     }
     
     renderBench() {
+        // 渲染场上武将
         const container = document.getElementById('board-units');
         container.innerHTML = this.boardUnits.map(unit => `
-            <div class="shop-unit" onclick="game.removeUnit('${unit.uid}')" style="width:60px;">
-                <div class="unit-avatar cost-${unit.cost}">
+            <div class="shop-unit" onclick="game.removeUnit('${unit.uid}')" style="width:50px;cursor:pointer;" title="点击移除">
+                <div class="unit-avatar cost-${unit.cost}" style="width:40px;height:40px;font-size:20px;">
                     ${unit.avatar}
                 </div>
             </div>
         `).join('');
+        
+        // 渲染候补区武将
+        const benchContainer = document.getElementById('bench-units');
+        if (benchContainer) {
+            benchContainer.innerHTML = this.benchUnits.map(unit => `
+                <div class="shop-unit" onclick="game.selectBenchUnit('${unit.uid}')" style="width:55px;cursor:grab;" title="点击后拖拽到棋盘">
+                    <div class="unit-avatar cost-${unit.cost}" style="width:45px;height:45px;font-size:24px;">
+                        ${unit.avatar}
+                        ${unit.star > 1 ? `<span class="unit-star">${'⭐'.repeat(unit.star - 1)}</span>` : ''}
+                    </div>
+                    <div style="font-size:10px;color:#ffd700;">${unit.name}</div>
+                </div>
+            `).join('');
+        }
     }
     
     render() {
         const ctx = this.ctx;
         const gs = this.gridSize;
+        const hexR = this.hexSize;
         
         // 清空画布
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
         
-        // 绘制网格
-        ctx.strokeStyle = '#ddd';
-        ctx.lineWidth = 1;
-        for (let x = 0; x <= this.cols; x++) {
-            ctx.beginPath();
-            ctx.moveTo(x * gs, 0);
-            ctx.lineTo(x * gs, this.rows * gs);
-            ctx.stroke();
-        }
-        for (let y = 0; y <= this.rows; y++) {
-            ctx.beginPath();
-            ctx.moveTo(0, y * gs);
-            ctx.lineTo(this.cols * gs, y * gs);
-            ctx.stroke();
+        // 绘制八边形网格
+        for (let row = 0; row < this.rows; row++) {
+            for (let col = 0; col < this.cols; col++) {
+                const cx = col * gs + gs / 2;
+                const cy = row * gs + gs / 2;
+                this.drawOctagon(cx, cy, hexR, '#ddd', '#ffffff');
+            }
         }
         
-        // 绘制我方区域
-        ctx.fillStyle = 'rgba(76, 175, 80, 0.15)';
-        ctx.fillRect(0, 4 * gs, this.cols * gs, 4 * gs);
+        // 绘制我方区域标记
+        for (let row = 4; row < this.rows; row++) {
+            for (let col = 0; col < this.cols; col++) {
+                const cx = col * gs + gs / 2;
+                const cy = row * gs + gs / 2;
+                this.drawOctagon(cx, cy, hexR - 2, 'rgba(76, 175, 80, 0.2)', 'rgba(76, 175, 80, 0.1)');
+            }
+        }
         
-        // 绘制敌方区域
-        ctx.fillStyle = 'rgba(244, 67, 54, 0.15)';
-        ctx.fillRect(0, 0, this.cols * gs, 4 * gs);
+        // 绘制敌方区域标记
+        for (let row = 0; row < 4; row++) {
+            for (let col = 0; col < this.cols; col++) {
+                const cx = col * gs + gs / 2;
+                const cy = row * gs + gs / 2;
+                this.drawOctagon(cx, cy, hexR - 2, 'rgba(244, 67, 54, 0.2)', 'rgba(244, 67, 54, 0.1)');
+            }
+        }
         
         // 绘制棋盘上的单位
         for (let unit of this.boardUnits) {
             this.drawUnit(unit.gridX, unit.gridY, unit);
         }
         
-        // 绘制选中单位的预览
-        if (this.selectedUnit && this.mousePos) {
-            ctx.globalAlpha = 0.5;
-            this.drawUnit(this.mousePos.x, this.mousePos.y, this.selectedUnit);
+        // 绘制拖拽预览
+        if (this.isDragging && this.dragUnit && this.mousePos) {
+            ctx.globalAlpha = 0.7;
+            this.drawUnit(this.mousePos.x, this.mousePos.y, this.dragUnit);
             ctx.globalAlpha = 1;
         }
+    }
+    
+    drawOctagon(cx, cy, r, strokeColor, fillColor) {
+        const ctx = this.ctx;
+        const angles = [0, 45, 90, 135, 180, 225, 270, 315];
+        
+        ctx.beginPath();
+        for (let i = 0; i < 8; i++) {
+            const angle = angles[i] * Math.PI / 180;
+            const x = cx + r * Math.cos(angle);
+            const y = cy + r * Math.sin(angle);
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.closePath();
+        
+        if (fillColor) {
+            ctx.fillStyle = fillColor;
+            ctx.fill();
+        }
+        ctx.strokeStyle = strokeColor;
+        ctx.lineWidth = 1;
+        ctx.stroke();
     }
     
     drawUnit(x, y, unit) {
@@ -501,32 +616,52 @@ class Game {
         const gs = this.gridSize;
         const cx = x * gs + gs / 2;
         const cy = y * gs + gs / 2;
+        const hexR = this.hexSize - 3;
         
-        // 绘制单位背景
-        ctx.fillStyle = '#f0f0f0';
+        // 绘制八边形背景
+        const angles = [0, 45, 90, 135, 180, 225, 270, 315];
         ctx.beginPath();
-        ctx.arc(cx, cy, gs / 2 - 5, 0, Math.PI * 2);
+        for (let i = 0; i < 8; i++) {
+            const angle = angles[i] * Math.PI / 180;
+            const px = cx + hexR * Math.cos(angle);
+            const py = cy + hexR * Math.sin(angle);
+            if (i === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        
+        // 渐变背景
+        const gradient = ctx.createRadialGradient(cx, cy, 5, cx, cy, hexR);
+        gradient.addColorStop(0, '#fff');
+        gradient.addColorStop(1, '#e8e8e8');
+        ctx.fillStyle = gradient;
         ctx.fill();
         
         // 绘制单位头像
-        ctx.font = '32px Arial';
+        ctx.font = '36px Arial';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillStyle = '#fff';
         ctx.fillText(unit.avatar, cx, cy);
         
         // 绘制星级
         if (unit.star > 1) {
-            ctx.font = '12px Arial';
+            ctx.font = '10px Arial';
             ctx.fillStyle = '#ffd700';
-            ctx.fillText('⭐'.repeat(unit.star - 1), cx, cy - gs / 2 + 10);
+            ctx.fillText('⭐'.repeat(unit.star - 1), cx, cy - 22);
         }
         
-        // 绘制边框
+        // 绘制阵营边框
         ctx.strokeStyle = this.getFactionColor(unit.faction);
         ctx.lineWidth = 3;
         ctx.beginPath();
-        ctx.arc(cx, cy, gs / 2 - 5, 0, Math.PI * 2);
+        for (let i = 0; i < 8; i++) {
+            const angle = angles[i] * Math.PI / 180;
+            const px = cx + (hexR - 2) * Math.cos(angle);
+            const py = cy + (hexR - 2) * Math.sin(angle);
+            if (i === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
         ctx.stroke();
     }
     
